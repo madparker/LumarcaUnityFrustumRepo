@@ -271,7 +271,7 @@ public class LoadLumarca : MonoBehaviour {
 	
 	void OnDrawGizmos(){
 
-		if(calibration){
+        if (calibration){
 			showCalibrationLines();
 		} else {
 			drawScene();
@@ -314,12 +314,19 @@ public class LoadLumarca : MonoBehaviour {
 		if(recordName){
 			currentFrame = new LumarcaFrame();
 		}
-		
-//		GL.PushMatrix();
-		
-		mat.SetPass(0);
-		
-		if(drawCube)
+
+        //		GL.PushMatrix();
+
+        if (mat != null)
+        {
+            mat.SetPass(0);
+        }
+
+        if(cfs == null){
+            cfs = Camera.main.GetComponent<CameraFrustrumScript>();
+        }
+
+        if (drawCube)
 			DrawBox();
 		
 		foreach(GameObject go in gameObjects){
