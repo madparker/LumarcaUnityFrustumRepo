@@ -10,16 +10,8 @@ public class AnimationCache : MonoBehaviour {
 
 
 	public static List<LumarcaFrame> GetFrames(string animKeyStr){
-//
-//		if(!animCache.ContainsKey(animKeyStr)){
-//			Debug.Log(PATH_TO_MATERIALS + animKeyStr);
-//
-//			LumarcaAnimation la = Resources.Load(PATH_TO_ANIMATIONS + animKeyStr, typeof(Material)) as Material;
-//
-//			animCache[animKeyStr] = la;
-//		}
 
-		if(animCache.ContainsKey(animKeyStr)){
+        if (animCache.ContainsKey(animKeyStr)){
 			return animCache[animKeyStr];
 		}
 

@@ -40,9 +40,9 @@ public class LoadLumarca : MonoBehaviour {
 	Vector3[] verts;
 	Vector3[] normals;
 
-	List<float> result;
+	List<float> result = new List<float>();
 
-	List<Vector3> pool;
+    List<Vector3> pool;
 
 	List<int> depthList;
 
@@ -74,9 +74,21 @@ public class LoadLumarca : MonoBehaviour {
 
 	public bool flipX = false;
 
+	//COMPUTE SHADER
+	public ComputeShader computeShader;
+
+	public struct ShaderLine
+	{
+		public Vector3 position;
+	}
+
+	ShaderLine[] shaderlines;
+
 	// Use this for initialization
 	void Awake () {
 		Setup();
+
+		Application.targetFrameRate = 60;
 	}
 
 	// Use this for initialization
@@ -133,8 +145,6 @@ public class LoadLumarca : MonoBehaviour {
 				pool.Add(new Vector3());
 			}
 
-			result = new List<float>();
-
 			TextAsset asset = Resources.Load<TextAsset>(jsonLineFile);
 
 			JObject j1 = JObject.Parse(asset.text);
@@ -146,13 +156,28 @@ public class LoadLumarca : MonoBehaviour {
 				(float)j1[LumarcaGenerator.PROP_PROJ_POS]["y"],
 				(float)j1[LumarcaGenerator.PROP_PROJ_POS]["z"]);
 
-			cfs.SetupCamera(
-				(float)j1[LumarcaGenerator.PROP_PHYSICAL_WIDTH],
-				projPos,
-				(float)j1[LumarcaGenerator.PROP_THROW_RATIO],
-				(bool)j1[LumarcaGenerator.PROP_CEILING_MOUNT]);
+			JProperty physicalDepth = j1.Property(LumarcaGenerator.PROP_PHYSICAL_DEPTH);
+
+			if (physicalDepth != null)
+			{
+				cfs.SetupCamera(
+					(float)j1[LumarcaGenerator.PROP_PHYSICAL_WIDTH],
+					(float)j1[LumarcaGenerator.PROP_PHYSICAL_DEPTH],
+					projPos,
+					(float)j1[LumarcaGenerator.PROP_THROW_RATIO],
+					(bool)j1[LumarcaGenerator.PROP_CEILING_MOUNT]);
+			}
+			else
+			{
+				cfs.SetupCamera(
+					(float)j1[LumarcaGenerator.PROP_PHYSICAL_WIDTH],
+					projPos,
+					(float)j1[LumarcaGenerator.PROP_THROW_RATIO],
+					(bool)j1[LumarcaGenerator.PROP_CEILING_MOUNT]);
+			}
 			
 			front = cfs.GetFrontPlane();
+			maxY = front[2].y * 10; //for triangle insection;
 
 			back = new Vector3[4];
 			back[0] = LumarcaGenerator.GetFarClippingPlane(front[0]);
@@ -165,7 +190,9 @@ public class LoadLumarca : MonoBehaviour {
 
 			JArray ja = j1["positions"] as JArray;
 
-			for(int i = 0; i < ja.Count; i++){
+			shaderlines = new ShaderLine[ja.Count];
+
+			for (int i = 0; i < ja.Count; i++){
 				Vector3 vec = UtilScript.JsonToVector3(ja[i]);
 
 				if(flipX){
@@ -182,6 +209,8 @@ public class LoadLumarca : MonoBehaviour {
 					vec.y = (front[0].y + (front[0].y + lineHeight))/2f;
 				}
 
+				shaderlines[i] = new ShaderLine();
+				shaderlines[i].position = vec;
 				posList.Add(vec);
 			}
 
@@ -330,8 +359,9 @@ public class LoadLumarca : MonoBehaviour {
 			DrawBox();
 		
 		foreach(GameObject go in gameObjects){
+//			drawMeshWithComputeShader(go);
 			drawMesh(go);
-		}
+        }
 			
 		foreach(LumarcaAnimation la in lumarcaAnimations){
 			drawAnimation(la);
@@ -384,7 +414,7 @@ public class LoadLumarca : MonoBehaviour {
 //		GL.PopMatrix();
 
 		if(recordName){
-			print(recordName);
+			//print(recordName);
 			recordAnimation.AddFrame(currentFrame);
 		}
 	}
@@ -528,6 +558,158 @@ public class LoadLumarca : MonoBehaviour {
 //		Debug.Log("tris: " + mesh.normals.Length);
 	}
 
+	void drawMeshWithComputeShader(GameObject rObject)
+	{
+	LumarcaMeshRender[] lumarcaMeshes = rObject.GetComponentsInChildren<LumarcaMeshRender>();
+
+	Vector3 pt1 = new Vector3();
+	Vector3 pt2 = new Vector3();
+
+	int checkNum = 0;
+				
+		for(int g = 0; g<lumarcaMeshes.Length; g++){
+			
+			LumarcaMeshRender lmh = lumarcaMeshes[g];
+	//			Mesh mesh = filter.sharedMesh;
+
+	GameObject gObject = lmh.gameObject;
+
+	BoxCollider boxCollider = lmh.GetComponent<BoxCollider>();
+
+	verts = lmh.GetComponent<LumarcaMeshRender>().transformedVerts;
+			normals = lmh.GetComponent<LumarcaMeshRender>().transformedNormals;
+			
+			bool fast = lmh.GetComponent<LumarcaMeshRender>().fastLessAccurate;
+
+	tris = lmh.mesh.triangles;
+
+			Material rMat = mat;
+			
+			if(lmh != null){
+				rMat = lmh.material;
+			}
+
+for (int c = 0; c < pos.Length; c++)
+{
+
+	if (!killStringsList.Contains(c))
+	{
+		Vector3 vec = pos[c];
+
+		vec.y = front[2].y * 10;
+
+		pt1.x = vec.x;
+		pt1.z = vec.z;
+		pt2.x = vec.x;
+		pt2.z = vec.z;
+
+		if (PositionInBox(boxCollider, gObject.transform.lossyScale, gObject.transform.position, vec))
+		{
+
+						List<float> intersections = new List<float>();
+						//if (!fast)
+						//{
+						intersections = GetIntersectListWithComputeShader(vec, lmh);
+						//}
+						//else
+						//{
+						//    intersections = GetIntersectListFast(vec);
+						//}
+
+						checkNum++;
+
+			intersections.Sort();
+
+			for (int i = 0; i < intersections.Count; i += 2)
+			{
+
+				if (i + 1 >= intersections.Count)
+				{
+					if (debugMessages)
+					{
+						Debug.Log("UNEVEN!!! " + intersections.Count);
+					}
+					break;
+				}
+				else
+				{
+					pt1.y = intersections[i];
+					pt2.y = intersections[i + 1];
+				}
+
+				float lerpPer = (pt1.z - front[0].z) / (back[0].z - front[0].z);
+
+				float lineHeight = Mathf.Lerp(frontHeight, backHeight, lerpPer);
+
+				if (cfs.ceilingMounted)
+				{
+					if (pt1.y > front[2].y)
+					{
+						pt1.y = front[2].y;
+					}
+
+					if (pt2.y > front[2].y)
+					{
+						pt2.y = front[2].y;
+					}
+
+					if (pt1.y < front[2].y - lineHeight)
+					{
+						pt1.y = front[2].y - lineHeight;
+					}
+
+					if (pt2.y < front[2].y - lineHeight)
+					{
+						pt2.y = front[2].y - lineHeight;
+					}
+				}
+				else
+				{
+
+					if (pt1.y > front[1].y + lineHeight)
+					{
+						pt1.y = front[1].y + lineHeight;
+					}
+
+					if (pt2.y > front[1].y + lineHeight)
+					{
+						pt2.y = front[1].y + lineHeight;
+					}
+
+					if (pt1.y < front[1].y)
+					{
+						pt1.y = front[1].y;
+					}
+
+					if (pt2.y < front[1].y)
+					{
+						pt2.y = front[1].y;
+					}
+				}
+
+				if (pt1.y != pt2.y)
+				{
+
+					if (lmh.drawDots)
+					{
+						DrawLine(pt1, pt2, rMat);
+					}
+					else
+					{
+						DrawLineWithoutDots(pt1, pt2, rMat);
+					}
+				}
+			}
+		}
+	}
+}
+		}
+		
+//		Debug.Log("checkNum: " + checkNum * mesh.vertexCount/3);
+//		Debug.Log("normals: " + mesh.vertices.Length);
+//		Debug.Log("tris: " + mesh.normals.Length);
+	}
+
 	RaycastHit rHit;
 
 	bool PositionInBox2(BoxCollider box, Vector3 scale, Vector3 center, Vector3 pos){
@@ -586,17 +768,6 @@ public class LoadLumarca : MonoBehaviour {
 			recordAnimation.SaveToJSON(recordFile);
 		}
 	}
-//	front: 0.6090493, 0.3809375, -0.6094999
-//	UnityEngine.MonoBehaviour:print(Object)
-//	LoadLumarca:DrawBox() (at Assets/Scripts/core/LoadLumarca.cs:458)
-//	LoadLumarca:drawScene() (at Assets/Scripts/core/LoadLumarca.cs:224)
-//	LoadLumarca:OnPostRender() (at Assets/Scripts/core/LoadLumarca.cs:171)
-
-//	back: -1.015833, -0.8888542, 0.6095002
-//	UnityEngine.MonoBehaviour:print(Object)
-//	LoadLumarca:DrawBox() (at Assets/Scripts/core/LoadLumarca.cs:464)
-//	LoadLumarca:drawScene() (at Assets/Scripts/core/LoadLumarca.cs:224)
-//	LoadLumarca:OnPostRender() (at Assets/Scripts/core/LoadLumarca.cs:171)
 
 
 
@@ -710,7 +881,7 @@ public class LoadLumarca : MonoBehaviour {
 		}
 
 		if(recordName){
-			Debug.Log(rMat.name);
+//			Debug.Log(rMat.name);
 			currentFrame.AddLine(new LumarcaLine(top, bottom, rMat.name));
 		}
 
@@ -724,6 +895,7 @@ public class LoadLumarca : MonoBehaviour {
 
 
 		//Draw material lines
+		//Debug.Log(rMat.name);
 		rMat.SetPass(0);
 
 
@@ -780,7 +952,6 @@ public class LoadLumarca : MonoBehaviour {
 	}
 
 	//TODO calc vert positions once, save performance
-
 	List<float> GetIntersectList(Vector3 vec){
 		result.Clear();
 
@@ -809,38 +980,97 @@ public class LoadLumarca : MonoBehaviour {
 		return result;
 	}
 
+	float maxY;
+	
+	List<float> GetIntersectListWithComputeShader(Vector3 vec, LumarcaMeshRender lmr)
+	{
+		return lmr.GetComputeShaderIntersects(vec);
+		
+//		result.Clear();
+//    
+//		//clear results
+//		float[] resultsArray = new float[tris.Length/3]; 
+//
+//		//Pass info to compute shader
+//
+//		int vector3Size = sizeof(float) * 3;
+//		int intSize = sizeof(int);
+//
+////		print("tris.Length: " + tris.Length);
+//
+//		ComputeBuffer cbTris = new ComputeBuffer(tris.Length, vector3Size);
+//		ComputeBuffer cbVerts = new ComputeBuffer(verts.Length, vector3Size);
+//		ComputeBuffer cbNorms = new ComputeBuffer(normals.Length, vector3Size);
+//		ComputeBuffer cbResults = new ComputeBuffer(resultsArray.Length, intSize);
+////    
+////		cbTris.SetData(tris);
+////		cbVerts.SetData(verts);
+////		cbNorms.SetData(normals);
+////		cbResults.SetData(resultsArray);
+////    
+////		computeShader.SetFloat("numTris", resultsArray.Length/3);
+////		computeShader.SetFloat("maxY", maxY);
+////    
+////		computeShader.SetBuffer(0, "tris", cbTris);
+////		computeShader.SetBuffer(0, "verts", cbVerts);
+////		computeShader.SetBuffer(0, "norms", cbNorms);
+////		computeShader.SetBuffer(0, "results", cbResults);
+////
+////
+////		//Vector3 normal = normals[vert1];
+////
+////		//         inter = checkIntersectTri(vec1, vec2, vec3, inter, down, temp, normal);
+////
+////		//Run compute shader
+//////		computeShader.Dispatch(0, resultsArray.Length/32 + 1, 1, 1);
+////		cbResults.GetData(resultsArray);
+////
+////    
+////		//Loop through results, add the intersections back
+////		for (int i = 0; i < resultsArray.Length; i++)
+////		{
+////			if (resultsArray[i] < maxY)
+////			{
+////				result.Add(resultsArray[i]);
+////			}
+////		}
+//    
+//		cbTris.Dispose();
+//		cbVerts.Dispose();
+//		cbNorms.Dispose();
+//		cbResults.Dispose();
+
+		return result;
+	}
+
 	List<float> GetIntersectListFast(Vector3 vec){
 		result.Clear();
 
-		for(int i = 0; i < tris.Length; i+=3){
-			
-			int vert1 = tris[i];
-			int vert2 = tris[i + 1];
-			int vert3 = tris[i + 2];
+		float denominator, a, b, c = 0;
+		bool inter;
+		
+		for(var i = 0; i < tris.Length; i+=3){
 
-			vec1 = verts[vert1];
-			vec2 = verts[vert2];
-			vec3 = verts[vert3];
+			vec1 = verts[tris[i]];
+			vec2 = verts[tris[i + 1]];
+			vec3 = verts[tris[i + 2]];
 			
-			if(pointInTriangle(vec1.x, vec1.z, 
-			                   vec2.x, vec2.z,
-			                   vec3.x, vec3.z,
-			                   vec.x, vec.z)){
+			
+			//point in triangle 51 vs 82
+			denominator = ((vec2.z - vec3.z)*(vec1.x - vec3.x) + (vec3.x - vec2.x)*(vec1.z - vec3.z));
+			a = ((vec2.z - vec3.z)*(vec.x - vec3.x) + (vec3.x - vec2.x)*(vec.z - vec3.z)) / denominator;
+			b = ((vec3.z - vec1.z)*(vec.x - vec3.x) + (vec1.x - vec3.x)*(vec.z - vec3.z)) / denominator;
+			c = 1 - a - b;
+
+			inter = 0 <= a && a <= 1 && 0 <= b && b <= 1 && 0 <= c && c <= 1;
+			
+			if(inter)
+			{
 				result.Add((vec1.y + vec2.y + vec3.y)/3f);
 			}
 		}
 
 		return result;
-	}
-
-	bool pointInTriangle(float x1, float y1, float x2, float y2, float x3, float y3, float x, float y)
-	{
-		float denominator = ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
-		float a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denominator;
-		float b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denominator;
-		float c = 1 - a - b;
-		
-		return 0 <= a && a <= 1 && 0 <= b && b <= 1 && 0 <= c && c <= 1;
 	}
 	
 	Vector3 checkIntersectTri(Vector3 pt1, Vector3 pt2, Vector3 pt3,

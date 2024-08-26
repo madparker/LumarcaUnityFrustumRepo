@@ -12,12 +12,22 @@ public class LumarcaAnimation : MonoBehaviour {
 
 	int currentFrame = 0;
 
+	float frameRate = 10f;
+
+	float timeElapsed = 0;
+
 	public int CurrentFrame{
-		get{
+		get
+		{
+			timeElapsed += Time.deltaTime;
 
 			int frameNum = currentFrame;
 
-			currentFrame++;
+			if (timeElapsed > (1 / frameRate))
+			{
+				timeElapsed = 0;
+				currentFrame++;
+			}
 
 			if(currentFrame >= frames.Count){
 				currentFrame = 0;

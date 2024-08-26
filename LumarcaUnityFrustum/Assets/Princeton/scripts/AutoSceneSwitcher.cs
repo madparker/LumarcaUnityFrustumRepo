@@ -18,8 +18,9 @@ public class AutoSceneSwitcher : MonoBehaviour {
 
 	// Use this for initialization
 	void Start () {
+		//Application.targetFrameRate = 60;
 
-		if(instance == null){
+		if (instance == null){
 			DontDestroyOnLoad(gameObject);
 			instance = this;
 		} else {

@@ -52,6 +52,7 @@ public class LumarcaGenerator : MonoBehaviour {
 	public const string PROP_PROJ_POS = "ProjPos";
 	public const string PROP_THROW_RATIO = "ThrowRatio";
 	public const string PROP_PHYSICAL_WIDTH = "PhysicalWidth";
+	public const string PROP_PHYSICAL_DEPTH = "PhysicalDepth";
 	public const string PROP_CEILING_MOUNT = "CeilingMount";
 	public const string PROP_POSITIONS = "positions";
 
@@ -667,6 +668,7 @@ public class LumarcaGenerator : MonoBehaviour {
 				jObject[PROP_PROJ_POS] = UtilScript.Vector3ToJson(cfs.transform.position);
 				jObject[PROP_THROW_RATIO] = cfs.throwRatio;
 				jObject[PROP_PHYSICAL_WIDTH] = cfs.physicalWidth;
+				jObject[PROP_PHYSICAL_DEPTH] = cfs.physicalDepth;
 				jObject[PROP_CEILING_MOUNT] = cfs.ceilingMounted;
 				JArray jPositions = new JArray();
 				jObject[PROP_POSITIONS] = jPositions;

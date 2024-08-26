@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 public class LumarcaMeshRender : MonoBehaviour {
 
@@ -13,6 +15,18 @@ public class LumarcaMeshRender : MonoBehaviour {
 	public bool drawDots = true;
 
 	bool init = false;
+
+	//compute shader
+	ComputeBuffer cbTris;
+	ComputeBuffer cbVerts;
+	ComputeBuffer cbNorms;
+	ComputeBuffer cbResults;
+	float[] resultsArray;
+	List<float> results;
+
+	public ComputeShader computeShader;
+	
+	public static float maxY = -99999999;
 
 	protected void InitMeshes(){
 		if(!init){
@@ -33,6 +47,40 @@ public class LumarcaMeshRender : MonoBehaviour {
 				transformedVerts[i] = new Vector3();
 				transformedNormals[i] = new Vector3();
 			}
+			
+			
+			//compute shader stuff
+			int vector3Size = sizeof(float) * 3;
+			int intSize = sizeof(int);
+			int floatSize = sizeof(float);
+
+			if (maxY < -99999998)
+			{
+				CameraFrustrumScript cfs = Camera.main.GetComponent<CameraFrustrumScript>();
+
+				Vector3[] front = cfs.GetFrontPlane();
+				maxY = front[2].y * 10;
+			}
+
+			resultsArray = new float[transformedVerts.Length/3]; 
+			
+			cbTris = new ComputeBuffer(mesh.triangles.Length, intSize);
+			cbVerts = new ComputeBuffer(mesh.vertices.Length, vector3Size);
+			cbNorms = new ComputeBuffer(transformedNormals.Length, vector3Size);
+			cbResults = new ComputeBuffer(resultsArray.Length, floatSize);
+			
+			cbTris.SetData(mesh.triangles);
+			cbVerts.SetData(mesh.vertices);
+			cbNorms.SetData(mesh.normals);
+			cbResults.SetData(resultsArray);
+			
+			//computeShader.SetFloat("numTris", resultsArray.Length/3);
+			//computeShader.SetFloat("maxY", maxY);
+    
+			//computeShader.SetBuffer(0, "tris", cbTris);
+			//computeShader.SetBuffer(0, "verts", cbVerts);
+			//computeShader.SetBuffer(0, "norms", cbNorms);
+			//computeShader.SetBuffer(0, "results", cbResults);
 		}
 	}
 
@@ -49,6 +97,19 @@ public class LumarcaMeshRender : MonoBehaviour {
 	// Update is called once per frame
 	void Update () {
 		UpdateMesh();
+		
+		if (resultsArray.Length > 0)
+		{
+			//computeShader data shader updating
+
+			//computeShader execution
+			//computeShader.Dispatch(0, resultsArray.Length / 32 + 1, 1, 1);
+
+			//no need to Dispose, we want to keep this around and keep updating it
+
+			//return results
+			results = resultsArray.ToList();
+		}
 	}
 
 	protected void UpdateMesh(){
@@ -87,5 +148,31 @@ public class LumarcaMeshRender : MonoBehaviour {
 				transformedVerts[i] += position;
 			}
 		}
+	}
+
+	public List<float> GetComputeShaderIntersects(Vector3 line)
+	{	
+		if (resultsArray.Length > 0)
+		{
+			//computeShader data shader updating
+
+			//computeShader execution
+			computeShader.Dispatch(0, resultsArray.Length / 32 + 1, 1, 1);
+
+			//get results from computeShader
+//			cbResults.GetData(resultsArray);
+
+			//no need to Dispose, we want to keep this around and keep updating it
+
+			//return results
+			results = resultsArray.ToList();
+		}
+
+//		for (int i = 0; i < results.Count; i++)
+//		{
+//			print("results: " + i + " " + results[i]);
+//		}
+
+		return results;
 	}
 }

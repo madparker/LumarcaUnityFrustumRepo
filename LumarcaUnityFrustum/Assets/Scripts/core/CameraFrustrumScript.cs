@@ -12,7 +12,8 @@ public class CameraFrustrumScript : MonoBehaviour {
 	
 	public float physicalWidth;
 	public float physicalHeight;
-	
+	public float physicalDepth;
+
 	public bool ceilingMounted = false;
 	private bool prevCM;
 	
@@ -38,6 +39,13 @@ public class CameraFrustrumScript : MonoBehaviour {
 		}
 	}
 
+	public void SetupCamera(float pWidth, float pDepth, Vector3 projPos, float tRatio, bool cMounted)
+	{
+		this.physicalDepth = pDepth;
+
+		SetupCamera(pWidth, projPos, tRatio, cMounted);
+	}
+
 	public void SetupCamera(float pWidth, Vector3 projPos, float tRatio, bool cMounted){
 		this.physicalWidth = pWidth;
 		this.projectorPos = projPos;
@@ -59,10 +67,14 @@ public class CameraFrustrumScript : MonoBehaviour {
 		throwDistance = throwRatio * physicalWidth;
 
 		Debug.Log("throwDistance: " + (throwDistance - 0));
+
+		if (physicalDepth == 0) {
+			physicalDepth = physicalWidth;
+		}
 		
 		cam.fieldOfView = 2 * Mathf.Atan(physicalHeight * 0.5f / throwDistance) * Mathf.Rad2Deg;
 		cam.nearClipPlane = throwDistance;
-		cam.farClipPlane = cam.nearClipPlane + physicalWidth;
+		cam.farClipPlane = cam.nearClipPlane + physicalDepth;
 		
 		//		Debug.Log("throwDistance: " + throwDistance);
 		//		Debug.Log("physicalWidth: " + physicalWidth);
